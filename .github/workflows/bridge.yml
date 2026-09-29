@@ -38,7 +38,7 @@ jobs:
       - name: Checkout source code
         if: ${{ inputs.version != 'master' }}
         uses: actions/checkout@v4
-         with:
+        with:
           repository: ${{ env.RUSTDESK_REPOSITORY }}
           ref: ${{ env.RUSTDESK_REF != '' && env.RUSTDESK_REF || format('refs/tags/{0}', inputs.version) }}
           submodules: recursive
@@ -47,7 +47,7 @@ jobs:
       - name: Checkout source code
         if: ${{ inputs.version == 'master' }}
         uses: actions/checkout@v4
-         with:
+        with:
           repository: ${{ env.RUSTDESK_REPOSITORY }}
           ref: ${{ env.RUSTDESK_REF || github.ref_name }}
           submodules: recursive
