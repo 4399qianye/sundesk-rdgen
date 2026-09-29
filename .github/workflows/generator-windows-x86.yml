@@ -15,6 +15,9 @@ on:
         type: string
 
 env:
+  RUSTDESK_REPOSITORY: "${{ vars.RUSTDESK_REPOSITORY || 'rustdesk/rustdesk' }}"
+  RUSTDESK_REF: "${{ vars.RUSTDESK_REF || '' }}"
+  LOW_LATENCY_VIDEO: "${{ vars.LOW_LATENCY_VIDEO || 'true' }}"
   SCITER_RUST_VERSION: "1.75" # https://github.com/rustdesk/rustdesk/discussions/7503, also 1.78 has ABI change which causes our sciter version not working, https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
   RUST_VERSION: "1.75" # sciter failed on m1 with 1.78 because of https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
   MAC_RUST_VERSION: "1.81" # 1.81 is requred for macos, because of https://github.com/yury/cidre requires 1.81
@@ -114,16 +117,19 @@ jobs:
         if: ${{ env.VERSION != 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF != '' && env.RUSTDESK_REF || format('refs/tags/{0}', env.VERSION) }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
 
       - name: Checkout source code
         if: ${{ env.VERSION == 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF || github.ref_name }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
 
       - name: Install ImageMagick on Windows
         run: |
@@ -261,7 +267,7 @@ jobs:
           shell: pwsh
           continue_on_error: true
           command: |
-            Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.diff -OutFile allowCustom.diff
+             Invoke-WebRequest -Uri https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/.github/patches/allowCustom.diff -OutFile allowCustom.diff
             git apply allowCustom.diff
 
       - name: Install LLVM and Clang
@@ -422,7 +428,7 @@ jobs:
               print('sodium Win32 -L injected')
           PYEOF
           cat .cargo/config.toml
-          cargo build --target ${{ matrix.job.target }} --features inline,vram,hwcodec --release --bins
+           cargo build --target ${{ matrix.job.target }} --features inline,vram,hwcodec${{ env.LOW_LATENCY_VIDEO == 'true' && ',low-latency-video' || '' }} --release --bins
           mkdir -p ./Release
           mv ./target/${{ matrix.job.target }}/release/rustdesk.exe ./Release/rustdesk.exe
           curl -LJ -o ./Release/sciter.dll https://github.com/c-smile/sciter-sdk/raw/master/bin.win/x32/sciter.dll

@@ -29,8 +29,19 @@
   * GHBEARER="your fine-grained access token"  
   * ZIP_PASSWORD="the same password that you entered as a github secret"
   * PROTOCOL="https" *optional - defaults to "https", change to "http" if you need to
-  * REPONAME="rdgen" *optional - defaults to "rdgen", change this if you renamed the repo when you forked it
+   * REPONAME="rdgen" *optional - defaults to "rdgen", change this if you renamed the repo when you forked it
+   * The build repository must define the following Actions variables/secrets for the custom RustDesk source:
+     * Repository variable `RUSTDESK_REPOSITORY`, for example `yourname/rustdesk-low-latency`
+     * Repository variable `RUSTDESK_REF`, for example `main` or `refs/tags/1.5.0-custom`
+     * Repository variable `LOW_LATENCY_VIDEO`, normally `true`
+     * Repository secret `RUSTDESK_REPO_TOKEN` when the source repository is private
 5. Now just run ```docker compose up -d```
+
+The recommended repository layout is two repositories: a fork of `rdgen` containing these
+workflows, and a separate RustDesk fork containing the code changes. In the server container,
+`GHUSER` and `REPONAME` identify the workflow repository. They do not identify the RustDesk
+source repository. The workflow dispatch inputs remain `version` and `zip_url`, so no Django
+API change is required for this repository split.
 
 
 ## Use a self hosted github runner for faster client generation (Windows only right now)

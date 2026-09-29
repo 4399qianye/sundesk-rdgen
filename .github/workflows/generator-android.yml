@@ -16,6 +16,8 @@ on:
 
 
 env:
+  RUSTDESK_REPOSITORY: "${{ vars.RUSTDESK_REPOSITORY || 'rustdesk/rustdesk' }}"
+  RUSTDESK_REF: "${{ vars.RUSTDESK_REF || '' }}"
   SCITER_RUST_VERSION: "1.75" # https://github.com/rustdesk/rustdesk/discussions/7503, also 1.78 has ABI change which causes our sciter version not working, https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
   RUST_VERSION: "1.75" # sciter failed on m1 with 1.78 because of https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
   CARGO_NDK_VERSION: "3.1.2"
@@ -48,6 +50,7 @@ jobs:
 
   generate-bridge-linux:
     uses: ./.github/workflows/bridge.yml
+    secrets: inherit
     with:
       version: ${{ inputs.version }}
 
@@ -177,16 +180,19 @@ jobs:
         if: ${{ env.VERSION != 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF != '' && env.RUSTDESK_REF || format('refs/tags/{0}', env.VERSION) }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
        
       - name: Checkout source code
         if: ${{ env.VERSION == 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF || github.ref_name }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -460,7 +466,7 @@ jobs:
           shell: bash
           continue_on_error: true
           command: |
-            wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/xoffline.diff
+             wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/.github/patches/xoffline.diff
             git apply xoffline.diff
 
       - name: hide-cm
@@ -473,7 +479,7 @@ jobs:
           shell: bash
           continue_on_error: true
           command: |
-            wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/hidecm.diff
+             wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/.github/patches/hidecm.diff
             git apply hidecm.diff
 
       - name: removeNewVersionNotif

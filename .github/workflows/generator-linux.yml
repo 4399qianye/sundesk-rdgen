@@ -15,6 +15,9 @@ on:
         type: string
 
 env:
+  RUSTDESK_REPOSITORY: "${{ vars.RUSTDESK_REPOSITORY || 'rustdesk/rustdesk' }}"
+  RUSTDESK_REF: "${{ vars.RUSTDESK_REF || '' }}"
+  LOW_LATENCY_VIDEO: "${{ vars.LOW_LATENCY_VIDEO || 'true' }}"
   SCITER_RUST_VERSION: "1.75" # https://github.com/rustdesk/rustdesk/discussions/7503, also 1.78 has ABI change which causes our sciter version not working, https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
   RUST_VERSION: "1.75" # sciter failed on m1 with 1.78 because of https://blog.rust-lang.org/2024/03/30/i128-layout-update.html
   CARGO_NDK_VERSION: "3.1.2"
@@ -48,6 +51,7 @@ jobs:
 
   generate-bridge-linux:
     uses: ./.github/workflows/bridge.yml
+    secrets: inherit
     with:
       version: ${{ inputs.version }}
 
@@ -126,16 +130,19 @@ jobs:
         if: ${{ env.VERSION != 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF != '' && env.RUSTDESK_REF || format('refs/tags/{0}', env.VERSION) }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
 
       - name: Checkout source code
         if: ${{ env.VERSION == 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF || github.ref_name }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
 
       - name: Set Swap Space
         if: ${{ matrix.job.arch == 'x86_64' }}
@@ -320,9 +327,9 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py
+             wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/.github/patches/allowCustom.py
             python allowCustom.py
-            wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff
+             wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/.github/patches/removeSetupServerTip.diff
             git apply removeSetupServerTip.diff
             # sed -i '/intl:/a \ \ archive: ^3.6.1' ./flutter/pubspec.yaml
             echo -n '${{ env.custom }}' > ./custom_.txt
@@ -369,7 +376,7 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/xoffline.diff
+             wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/.github/patches/xoffline.diff
             git apply xoffline.diff
 
       - name: hide-cm
@@ -381,7 +388,7 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/hidecm.diff
+             wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/.github/patches/hidecm.diff
             git apply hidecm.diff
         
       - name: removeNewVersionNotif
@@ -487,7 +494,7 @@ jobs:
             sed -ie 's|\({home}/{p}/{app_name0}2\?.toml\)|\\"\1\\"|g' src/platform/linux.rs
             sed -ie 's|\(/root/{p}/\)|\\"\1\\"|g' src/platform/linux.rs
 
-            cargo build --lib $JOBS --features hwcodec,flutter,unix-file-copy-paste --release
+             cargo build --lib $JOBS --features hwcodec,flutter,unix-file-copy-paste${{ env.LOW_LATENCY_VIDEO == 'true' && ',low-latency-video' || '' }} --release
             rm -rf target/release/deps target/release/build
             rm -rf ~/.cargo
 
@@ -776,16 +783,19 @@ jobs:
         if: ${{ env.VERSION != 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF != '' && env.RUSTDESK_REF || format('refs/tags/{0}', env.VERSION) }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
 
       - name: Checkout source code
         if: ${{ env.VERSION == 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF || github.ref_name }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
 
       - name: Detect DRM support
         run: |
@@ -996,9 +1006,9 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/allowCustom.py
+             wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/.github/patches/allowCustom.py
             python allowCustom.py
-            wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/removeSetupServerTip.diff
+             wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/.github/patches/removeSetupServerTip.diff
             git apply removeSetupServerTip.diff
             echo -n '${{ env.custom }}' > ./custom_.txt
           
@@ -1044,7 +1054,7 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/xoffline.diff
+             wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/.github/patches/xoffline.diff
             git apply xoffline.diff
 
       - name: hide-cm
@@ -1056,7 +1066,7 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            wget https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/hidecm.diff
+             wget https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/.github/patches/hidecm.diff
             git apply hidecm.diff
         
       - name: removeNewVersionNotif
@@ -1146,7 +1156,7 @@ jobs:
             pushd /workspace
             export VCPKG_ROOT=/opt/artifacts/vcpkg
             export DRMTAP_PREBUILT_DIR=/workspace/third_party/libdrmtap/build-pkg
-            FEATURES=$(python3 ./build.py --flutter --drm --hwcodec --unix-file-copy-paste --print-features)
+             FEATURES=$(python3 ./build.py --flutter --drm --hwcodec --unix-file-copy-paste ${{ env.LOW_LATENCY_VIDEO == 'true' && '--low-latency-video' || '' }} --print-features)
             for want in drm drm-wake; do
               case ",$FEATURES," in
                 *",$want,"*) ;;
@@ -1230,7 +1240,7 @@ jobs:
                 done
             fi
 
-            python3 ./build.py --flutter --drm --hwcodec --unix-file-copy-paste --skip-cargo
+             python3 ./build.py --flutter --drm --hwcodec --unix-file-copy-paste ${{ env.LOW_LATENCY_VIDEO == 'true' && '--low-latency-video' || '' }} --skip-cargo
             for name in *.deb; do
               mv "$name" /workspace/output/"${{ env.filename }}-unattended-wayland-x86_64.deb"
             done
@@ -1291,16 +1301,19 @@ jobs:
         if: ${{ env.VERSION != 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF != '' && env.RUSTDESK_REF || format('refs/tags/{0}', env.VERSION) }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
 
       - name: Checkout source code
         if: ${{ env.VERSION == 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF || github.ref_name }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
 
       - name: Download Binary
         uses: actions/download-artifact@master
@@ -1447,16 +1460,19 @@ jobs:
         if: ${{ env.VERSION != 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          ref: refs/tags/${{ env.VERSION }}
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF != '' && env.RUSTDESK_REF || format('refs/tags/{0}', env.VERSION) }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
 
       - name: Checkout source code
         if: ${{ env.VERSION == 'master' }}
         uses: actions/checkout@v4
         with:
-          repository: rustdesk/rustdesk
-          submodules: recursive
+           repository: ${{ env.RUSTDESK_REPOSITORY }}
+           ref: ${{ env.RUSTDESK_REF || github.ref_name }}
+           submodules: recursive
+           token: ${{ secrets.RUSTDESK_REPO_TOKEN || github.token }}
 
       - name: Download Binary
         uses: actions/download-artifact@master
