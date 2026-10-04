@@ -41,6 +41,7 @@ env:
   MACOS_P12_BASE64: "${{ secrets.MACOS_P12_BASE64 }}"
   UPLOAD_ARTIFACT: 'true'
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}"
+  SIGN_API_KEY: "${{ secrets.SIGN_API_KEY }}"
   STATUS_URL: "${{ secrets.GENURL }}/updategh"
 
 
@@ -543,13 +544,109 @@ jobs:
             Write-Host "Error: printer-adapter folder not found in repository."
           }
 
+      - name: Install Windows Driver Kit
+        shell: pwsh
+        run: |
+          $wdk = "C:\Program Files (x86)\Windows Kits\10\build\10.0.26100.0"
+          if (-not (Test-Path $wdk)) {
+            Invoke-WebRequest `
+              -Uri "https://go.microsoft.com/fwlink/?linkid=2335869" `
+              -OutFile "$env:RUNNER_TEMP\wdksetup.exe"
+            Start-Process "$env:RUNNER_TEMP\wdksetup.exe" `
+              -ArgumentList "/quiet", "/norestart" `
+              -Wait -NoNewWindow
+          }
+          $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstallPath = & $vswhere -latest -products * -property installationPath
+          if (-not (Test-Path $vsInstaller) -or -not $vsInstallPath) {
+            throw "Visual Studio Installer or installation path is not available"
+          }
+          Start-Process $vsInstaller -ArgumentList "modify", "--installPath", $vsInstallPath, "--add", "Microsoft.VisualStudio.Component.WindowsDriverKit", "--quiet", "--norestart" -Wait -NoNewWindow
+
+      - name: Build RustDesk virtual HID driver
+        shell: pwsh
+        continue-on-error: false
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe is not available on the runner" }
+          $vsPath = & $vswhere -latest -products * -property installationPath
+          $cl = Get-ChildItem "$vsPath\VC\Tools\MSVC" -Filter cl.exe -Recurse |
+            Where-Object { $_.FullName -like '*Hostx64*x64*' } |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $cl) { throw "MSVC x64 compiler was not found" }
+          $kitRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
+          $ntddkHeader = Get-ChildItem "$kitRoot\Include" -Filter ntddk.h -Recurse |
+            Select-Object -First 1
+          if (-not $ntddkHeader) { throw "WDK ntddk.h was not installed under $kitRoot" }
+          $include = Split-Path $ntddkHeader.DirectoryName -Parent
+          $kitVersion = Split-Path $include -Leaf
+          $lib = "$kitRoot\Lib\$kitVersion"
+          $msvcBin = $cl.DirectoryName
+          $msvcRoot = Split-Path (Split-Path (Split-Path $msvcBin -Parent) -Parent) -Parent
+          $env:Path = "$msvcBin;$env:Path"
+          $env:Include = "$include\km;$include\shared;$include\um;$include\ucrt;$msvcRoot\include"
+          $env:Lib = "$lib\km\x64;$lib\um\x64;$msvcRoot\lib\x64"
+          $outDir = Join-Path (Resolve-Path "drivers/rustdesk_hid").Path "x64\Release"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          $obj = Join-Path $outDir "driver.obj"
+          $driver = Join-Path $outDir "rustdesk_hid.sys"
+          & $cl.FullName /nologo /c /kernel /Zl /W4 /D_AMD64_ /D_KERNEL_MODE /DNTDDI_VERSION=0x0A000000 `
+            /I"$include\km" /I"$include\shared" /I"$include\um" /I"$include\ucrt" /I"$msvcRoot\include" `
+            /Fo$obj "drivers/rustdesk_hid/driver.c"
+          if ($LASTEXITCODE -ne 0) { throw "Virtual HID driver C compilation failed" }
+           & link.exe /nologo /driver /subsystem:native /entry:DriverEntry /out:$driver `
+             /LIBPATH:"$lib\km\x64" /LIBPATH:"$lib\um\x64" /LIBPATH:"$msvcRoot\lib\x64" `
+             $obj ntoskrnl.lib VhfKm.lib Wdmsec.lib BufferOverflowFastFailK.lib
+           if ($LASTEXITCODE -ne 0) { throw "Virtual HID driver link failed" }
+           if (-not (Test-Path $driver)) { throw "Virtual HID driver was not produced: $driver" }
+           Copy-Item "drivers/rustdesk_hid/rustdesk_hid.inf" $outDir -Force
+
+      - name: Sign virtual HID binary
+        if: env.SIGN_BASE_URL != '' && env.SIGN_BASE_URL != '-2'
+        shell: pwsh
+        run: |
+          $outDir = (Resolve-Path "drivers/rustdesk_hid/x64/Release").Path
+          $zip = Join-Path $env:RUNNER_TEMP "rustdesk_hid_sys.zip"
+          $signed = Join-Path $env:RUNNER_TEMP "rustdesk_hid_sys_signed.zip"
+          Compress-Archive -Path (Join-Path $outDir "rustdesk_hid.sys") -DestinationPath $zip -Force
+          curl.exe -X POST -F "file=@$zip" -H "X-API-KEY: $env:SIGN_API_KEY" -m 900 "$env:SIGN_BASE_URL/sign/" -o $signed
+          if ($LASTEXITCODE -ne 0) { throw "Virtual HID binary signing request failed" }
+          Expand-Archive -Path $signed -DestinationPath $outDir -Force
+
+      - name: Generate virtual HID driver catalog
+        shell: pwsh
+        run: |
+          $outDir = (Resolve-Path "drivers/rustdesk_hid/x64/Release").Path
+          $kitRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
+          $inf2cat = Get-ChildItem "$kitRoot\bin" -Filter Inf2Cat.exe -Recurse | Select-Object -First 1
+          if (-not $inf2cat) { throw "Inf2Cat.exe was not installed with the WDK" }
+          & $inf2cat.FullName /driver:$outDir /os:10_X64 /verbose
+          if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed for the virtual HID package" }
+          if (-not (Test-Path (Join-Path $outDir "rustdesk_hid.cat"))) { throw "Virtual HID catalog was not produced" }
+
+      - name: Sign virtual HID catalog
+        if: env.SIGN_BASE_URL != '' && env.SIGN_BASE_URL != '-2'
+        shell: pwsh
+        run: |
+          $outDir = (Resolve-Path "drivers/rustdesk_hid/x64/Release").Path
+          $zip = Join-Path $env:RUNNER_TEMP "rustdesk_hid_cat.zip"
+          $signed = Join-Path $env:RUNNER_TEMP "rustdesk_hid_cat_signed.zip"
+          Compress-Archive -Path (Join-Path $outDir "rustdesk_hid.cat") -DestinationPath $zip -Force
+          curl.exe -X POST -F "file=@$zip" -H "X-API-KEY: $env:SIGN_API_KEY" -m 900 "$env:SIGN_BASE_URL/sign/" -o $signed
+          if ($LASTEXITCODE -ne 0) { throw "Virtual HID catalog signing request failed" }
+          Expand-Archive -Path $signed -DestinationPath $outDir -Force
+
       - name: Build rustdesk
         run: |
-          # Windows: build RustDesk
+           # Windows: build RustDesk
            python3 .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack ${{ env.LOW_LATENCY_VIDEO == 'true' && '--low-latency-video' || '' }}
-          mv ./flutter/build/windows/x64/runner/Release ./rustdesk
+           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
+           foreach ($file in @("rustdesk_hid.sys", "rustdesk_hid.inf", "rustdesk_hid.cat")) {
+             if (-not (Test-Path "./rustdesk/$file")) { throw "Virtual HID package file was not staged: $file" }
+           }
  
-          # Download usbmmidd_v2.zip and extract it to ./rustdesk
+           # Download usbmmidd_v2.zip and extract it to ./rustdesk
           Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
           Expand-Archive usbmmidd_v2.zip -DestinationPath . -Force
           Remove-Item -Path usbmmidd_v2\Win32 -Recurse
@@ -628,7 +725,7 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          Compress-Archive -Path ./rustdesk/*.dll, ./rustdesk/*.exe -DestinationPath ./rustdesk/unsigned_files.zip -CompressionLevel Fastest
+           Compress-Archive -Path ./rustdesk/*.dll, ./rustdesk/*.exe -DestinationPath ./rustdesk/unsigned_files.zip -CompressionLevel Fastest
 
       - name: sign dlls
         continue-on-error: true

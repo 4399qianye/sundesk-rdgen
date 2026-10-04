@@ -24,6 +24,18 @@ For a private source repository, add this under **Actions > Secrets**:
 RUSTDESK_REPO_TOKEN=<token with Contents: Read on sundesk-rustdesk>
 ```
 
+The Windows workflows build the x64 virtual HID package (`rustdesk_hid.sys`,
+`rustdesk_hid.inf`, and `rustdesk_hid.cat`) with the Windows Driver Kit before
+running `build.py`. The package is staged into the Windows release directory,
+included in the portable client and MSI, and signed through `SIGN_BASE_URL` and
+`SIGN_API_KEY` when those secrets are configured. The installer registers the
+package with `pnputil` and starts the `RustDeskHid` service.
+The x86 Windows workflow does not include this x64 driver.
+
+Without a code-signing service, the generated client is suitable for testing
+only. A normal Windows installation requires a Microsoft-trusted signature for
+the kernel driver; signing the EXE or MSI alone is not sufficient.
+
 The existing `GHUSER`, `REPONAME`, `GHBRANCH`, and `GHBEARER` settings in the Django service
 continue to point at `sundesk-rdgen`, because that repository owns the `workflow_dispatch`
 files. The source repository only needs to preserve the RustDesk directory layout and its
