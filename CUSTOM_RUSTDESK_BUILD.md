@@ -63,15 +63,15 @@ identity handshake, control messages, and media negotiation remain RustDesk prot
 
 ## VIIPER Game Input
 
-The Windows artifact also carries `viiper.exe`. To use the optional standard
-HID mouse/keyboard backend, install the signed `usbip-win2` package on the
-target Windows machine and launch the client with:
+The Windows artifact also carries `viiper.exe`. Install the signed `usbip-win2`
+package on the target Windows machine and launch the client normally; the
+standard HID mouse/keyboard backend is enabled by default.
 
 ```text
-RUSTDESK_VIIPER=1
+RUSTDESK_VIIPER=0
 ```
 
 VIIPER is started locally by RustDesk and controlled through its localhost TCP
-API. The backend is disabled unless the variable is set. `usbip-win2` is a
+API. Set `RUSTDESK_VIIPER=0` to force the old fallback. `usbip-win2` is a
 separate prerequisite because it provides the signed generic USB/IP Windows
 driver.
