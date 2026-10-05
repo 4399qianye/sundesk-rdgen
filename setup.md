@@ -35,7 +35,10 @@
      * Repository variable `RUSTDESK_REF`, for example `main` or `refs/tags/1.5.0-custom`
      * Repository variable `LOW_LATENCY_VIDEO`, normally `true`
      * Repository secret `RUSTDESK_REPO_TOKEN` when the source repository is private
-5. Now just run ```docker compose up -d```
+5. Upload the complete rdgen repository, including the modified
+   `.github/workflows` directory, to the server and run ```docker compose up -d --build```. The
+   compose file builds the local rdgen image, so it does not silently use the
+   upstream `bryangerlach/rdgen` image.
 
 The recommended repository layout is two repositories: a fork of `rdgen` containing these
 workflows, and a separate RustDesk fork containing the code changes. In the server container,
@@ -60,6 +63,11 @@ API change is required for this repository split.
 4. Now for your rdgen repo, add github secrets for 
    - SIGN_BASE_URL (the accesible over the internet URL for the signing api server)
    - SIGN_API_KEY (the api key you have set on your signing api server)
+
+The signing service must sign the HID `.sys` and `.cat` files as part of the
+driver package. For normal Windows 10/11 systems, an EV certificate alone is
+not the final Microsoft kernel trust step; submit the driver through the
+Microsoft Hardware Developer Program for attestation or WHQL signing.
 
 
 ## Host manually:

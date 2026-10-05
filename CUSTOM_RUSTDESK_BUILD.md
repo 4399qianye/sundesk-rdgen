@@ -60,3 +60,18 @@ video plane:
 This is a RustDesk-compatible media replacement, not a Moonlight-compatible Sunshine RTSP/RTP
 implementation. Moonlight clients cannot connect to it directly because the ID/password session,
 identity handshake, control messages, and media negotiation remain RustDesk protocol contracts.
+
+## VIIPER Game Input
+
+The Windows artifact also carries `viiper.exe`. To use the optional standard
+HID mouse/keyboard backend, install the signed `usbip-win2` package on the
+target Windows machine and launch the client with:
+
+```text
+RUSTDESK_VIIPER=1
+```
+
+VIIPER is started locally by RustDesk and controlled through its localhost TCP
+API. The backend is disabled unless the variable is set. `usbip-win2` is a
+separate prerequisite because it provides the signed generic USB/IP Windows
+driver.
